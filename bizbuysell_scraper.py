@@ -1,3 +1,5 @@
+import csv
+import os
 from bs4 import BeautifulSoup
 from pythonjsonlogger import jsonlogger
 from aiolimiter import AsyncLimiter
@@ -8,7 +10,6 @@ import logging
 import time
 import random
 import aiofiles
-import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -17,10 +18,19 @@ formatter = jsonlogger.JsonFormatter()
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 
+# Create 'data' directory if it doesn't exist
+if not os.path.exists('data'):
+    os.makedirs('data')
+
 def parse_html(html):
     soup = BeautifulSoup(html, 'html.parser')
 
-    # Find the elements containing the data you want to scrape
+    title_element = soup.find('h1', class_='bfsTitle')
+    title = title_element.text.strip() if title_element else 'N/A'
+    
+    location_element = soup.find('h2', class_='gray')
+    location = location_element.text.strip() if location_element else 'N/A'
+
     asking_price_element = soup.find('span', string='Asking Price:')
     asking_price = asking_price_element.find_next_sibling('b').text.strip() if asking_price_element else 'N/A'
 
@@ -30,17 +40,50 @@ def parse_html(html):
     gross_revenue_element = soup.find('span', string='Gross Revenue:')
     gross_revenue = gross_revenue_element.find_next_sibling('b').text.strip() if gross_revenue_element else 'N/A'
 
-    # need to do for the rest of the data points.
+    ebitda_element = soup.find('span', string='EBITDA:')
+    ebitda = ebitda_element.find_next_sibling('b').text.strip() if ebitda_element else 'N/A'
 
-    # Return the data as a dictionary
+    established_element = soup.find('span', string='Established:')
+    established = established_element.find_next_sibling('b').text.strip() if established_element else 'N/A'
+
+    inventory_element = soup.find('span', string='Inventory:')
+    inventory = inventory_element.find_next_sibling('b').text.strip() if inventory_element else 'N/A'
+
+    ffe_element = soup.find('span', string='FF&E:')
+    ffe = ffe_element.find_next_sibling('b').text.strip() if ffe_element else 'N/A'
+
+    business_description_element = soup.find('div', class_='businessDescription')
+    business_description = business_description_element.text.strip() if business_description_element else 'N/A'
+
+    detailed_info_elements = soup.find_all('dt')
+    detailed_info = {}
+    for element in detailed_info_elements:
+        key = element.find('strong').text.strip()
+        value = element.find_next_sibling('dd').text.strip()
+        detailed_info[key] = value
+
     return {
+        'Title': title,
+        'Location': location,
         'Asking Price': asking_price,
         'Cash Flow': cash_flow,
         'Gross Revenue': gross_revenue,
-        # add on for the rest of the data points.
+        'EBITDA': ebitda,
+        'Established': established,
+        'Inventory': inventory,
+        'FF&E': ffe,
+        'Business Description': business_description,
+        **detailed_info,
     }
 
-async def HTTPClientDownloader(url, settings):
+
+async def HTTPClientDownloader(url, settings, state):
+    # Before scraping, check if we've already scraped this URL
+    with open('scraped_urls.txt', 'r') as f:
+        scraped_urls = f.read().splitlines()
+    if url in scraped_urls:
+        return
+
     host = urlparse(url).hostname
     max_tcp_connections = settings['max_tcp_connections']
 
@@ -74,25 +117,36 @@ async def HTTPClientDownloader(url, settings):
                     }
                 )
 
-                dir = "./data"
-                idx = url.split(
-                    "https://www.bizbuysell.com/new-york-businesses-for-sale/")[-1]
-                loc = f"{dir}/bizbuysell-ny-{idx}.json"
+                file_path = f"./data/bizbuysell-{state}.csv"
 
-                async with aiofiles.open(loc, mode="w") as fd:
-                    await fd.write(json.dumps(data))  # Save the data as JSON
+                # If the file does not exist, create it and write the headers
+                if not os.path.isfile(file_path):
+                    with open(file_path, 'w', newline='') as f:
+                        writer = csv.DictWriter(f, fieldnames=data.keys())
+                        writer.writeheader()
 
-async def dispatch(url, settings):
-    await HTTPClientDownloader(url, settings)
+                # Append the data
+                with open(file_path, 'a', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=data.keys())
+                    writer.writerow(data)
 
-async def main(start_urls, settings):
+    # After scraping, add the URL to the list of scraped URLs
+    with open('scraped_urls.txt', 'a') as f:
+        f.write(url + '\n')
+
+
+async def dispatch(url, settings, state):
+    await HTTPClientDownloader(url, settings, state)
+
+async def main(start_urls, settings, state):
     tasks = []
     for url in start_urls:
-        task = asyncio.create_task(dispatch(url, settings))
+        task = asyncio.create_task(dispatch(url, settings, state))
         tasks.append(task)
 
     results = await asyncio.gather(*tasks)
     print(f"total requests", len(results))
+
 
 if __name__ == '__main__':
     settings = {
@@ -106,11 +160,20 @@ if __name__ == '__main__':
             },
         }
     }
+
+    states = ['texas']
     
-    start_urls = []
-    start, end = 1, 13  # For demo purpose
-    for i in range(start, end):
-        url = f"https://www.bizbuysell.com/new-york-businesses-for-sale/{i}"
-        start_urls.append(url)
-    
-    asyncio.run(main(start_urls, settings))
+    # , 'florida', 'georgia', 'mississippi', 'louisiana', 'north-carolina', 'south-carolina', 'illinois', 'maryland', 'arizona', 'colorado', 'alabama', 'new-mexico', 'arkansas', 'nevada', 'wisconsin', 'michigan', 'pennsylvania', 'new-york', 'new-jersey'
+
+    tasks = []
+    for state in states:
+        start_urls = []
+        start, end = 1, 13  # For demo purpose
+        for i in range(start, end):
+            url = f"https://www.bizbuysell.com/{state}-established-businesses-for-sale/{i}"
+            start_urls.append(url)
+        
+        task = asyncio.create_task(main(start_urls, settings, state))
+        tasks.append(task)
+
+    asyncio.gather(*tasks)
