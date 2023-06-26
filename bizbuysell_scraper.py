@@ -181,9 +181,8 @@ if __name__ == '__main__':
         }
     }
 
-    states = ['texas']
+    states = ['texas', 'florida', 'georgia', 'mississippi', 'louisiana', 'north-carolina', 'south-carolina', 'illinois', 'maryland', 'arizona', 'colorado', 'alabama', 'new-mexico', 'arkansas', 'nevada', 'wisconsin', 'michigan', 'pennsylvania', 'new-york', 'new-jersey']
     
-    # , 'florida', 'georgia', 'mississippi', 'louisiana', 'north-carolina', 'south-carolina', 'illinois', 'maryland', 'arizona', 'colorado', 'alabama', 'new-mexico', 'arkansas', 'nevada', 'wisconsin', 'michigan', 'pennsylvania', 'new-york', 'new-jersey'
     # Other states:
     # 'alaska', 'california', 'connecticut', 'delaware', 'hawaii', 'idaho', 'indiana', 'iowa', 'kansas', 'kentucky', 'maine', 'massachusetts', 'minnesota', 'missouri', 'montana', 'nebraska', 'new-hampshire', 'north-dakota', 'ohio', 'oklahoma', 'oregon', 'rhode-island', 'south-dakota', 'tennessee', 'utah', 'vermont', 'virginia', 'washington', 'west-virginia', 'wyoming'
 
