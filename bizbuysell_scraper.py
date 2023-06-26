@@ -22,6 +22,17 @@ logger.addHandler(logHandler)
 if not os.path.exists('data'):
     os.makedirs('data')
 
+def parse_listing_urls(html):
+    try:
+        soup = BeautifulSoup(html, 'html.parser')
+        listing_elements = soup.find_all('a', class_='diamond')
+        listing_urls = ['https://www.bizbuysell.com' + element['href'] for element in listing_elements]
+        return listing_urls
+    except Exception as e:
+        logger.error(f"Error in parse_listing_urls: {str(e)}")
+        return []
+    
+    
 def parse_html(html):
     soup = BeautifulSoup(html, 'html.parser')
 
@@ -105,34 +116,43 @@ async def HTTPClientDownloader(url, settings, state):
             html = None
             async with session.get(url, proxy=proxy, headers=headers) as response:
                 html = await response.text()
-                data = parse_html(html)  # Parse the HTML and extract the data
-                end_time = time.perf_counter()  # Stop timer
-                elapsed_time = end_time - start_time  # Calculate time taken to get response
-                status = response.status
+                listing_urls = parse_listing_urls(html)  # Get individual listing URLs
+                
+                for listing_url in listing_urls:
+                    # Adding randomness to the rate limit
+                    await asyncio.sleep(random.uniform(1, 5))
+                    
+                    async with session.get(listing_url, proxy=proxy, headers=headers) as listing_response:
+                        listing_html = await listing_response.text()
+                        data = parse_html(listing_html)  # Parse the HTML and extract the data
 
-                logger.info(
-                    msg=f"status={status}, url={url}",
-                    extra={
-                        "elapsed_time": f"{elapsed_time:4f}",
-                    }
-                )
+                        end_time = time.perf_counter()  # Stop timer
+                        elapsed_time = end_time - start_time  # Calculate time taken to get response
+                        status = listing_response.status
 
-                file_path = f"./data/bizbuysell-{state}.csv"
+                        logger.info(
+                            msg=f"status={status}, url={listing_url}",
+                            extra={
+                                "elapsed_time": f"{elapsed_time:4f}",
+                            }
+                        )
 
-                # If the file does not exist, create it and write the headers
-                if not os.path.isfile(file_path):
-                    with open(file_path, 'w', newline='') as f:
-                        writer = csv.DictWriter(f, fieldnames=data.keys())
-                        writer.writeheader()
+                        file_path = f"./data/bizbuysell-{state}.csv"
 
-                # Append the data
-                with open(file_path, 'a', newline='') as f:
-                    writer = csv.DictWriter(f, fieldnames=data.keys())
-                    writer.writerow(data)
+                        # If the file does not exist, create it and write the headers
+                        if not os.path.isfile(file_path):
+                            with open(file_path, 'w', newline='') as f:
+                                writer = csv.DictWriter(f, fieldnames=data.keys())
+                                writer.writeheader()
 
-    # After scraping, add the URL to the list of scraped URLs
-    with open('scraped_urls.txt', 'a') as f:
-        f.write(url + '\n')
+                        # Append the data
+                        with open(file_path, 'a', newline='') as f:
+                            writer = csv.DictWriter(f, fieldnames=data.keys())
+                            writer.writerow(data)
+
+        # After scraping, add the URL to the list of scraped URLs
+        with open('scraped_urls.txt', 'a') as f:
+            f.write(url + '\n')
 
 
 async def dispatch(url, settings, state):
@@ -164,6 +184,8 @@ if __name__ == '__main__':
     states = ['texas']
     
     # , 'florida', 'georgia', 'mississippi', 'louisiana', 'north-carolina', 'south-carolina', 'illinois', 'maryland', 'arizona', 'colorado', 'alabama', 'new-mexico', 'arkansas', 'nevada', 'wisconsin', 'michigan', 'pennsylvania', 'new-york', 'new-jersey'
+    # Other states:
+    # 'alaska', 'california', 'connecticut', 'delaware', 'hawaii', 'idaho', 'indiana', 'iowa', 'kansas', 'kentucky', 'maine', 'massachusetts', 'minnesota', 'missouri', 'montana', 'nebraska', 'new-hampshire', 'north-dakota', 'ohio', 'oklahoma', 'oregon', 'rhode-island', 'south-dakota', 'tennessee', 'utah', 'vermont', 'virginia', 'washington', 'west-virginia', 'wyoming'
 
     tasks = []
     for state in states:
