@@ -69,9 +69,10 @@ def parse_html(html):
     detailed_info_elements = soup.find_all('dt')
     detailed_info = {}
     for element in detailed_info_elements:
-        key = element.find('strong').text.strip()
+        key = element.find('strong').text.strip().rstrip(":")  # Remove trailing ':' from the key
         value = element.find_next_sibling('dd').text.strip()
         detailed_info[key] = value
+
 
     return {
         'Title': title,
