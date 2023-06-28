@@ -32,7 +32,7 @@ The extracted data is saved to a CSV file in a directory called data, with one f
 
 The script uses beautifulsoup4 to parse the HTML of the web pages, and python-json-logger to log events in a machine-readable JSON format.
 
-# Usage
+## Usage
 
 To use the script, you need to specify the states you want to scrape in the states list in the main section of the script.
 

@@ -22,7 +22,7 @@ logger.addHandler(logHandler)
 if not os.path.exists('data'):
     os.makedirs('data')
 
-def parse_listing_urls(html):
+def parse_listing_urls(html, url):
     try:
         soup = BeautifulSoup(html, 'html.parser')
         listing_elements = soup.find_all('a', class_='diamond')
@@ -85,13 +85,15 @@ def parse_html(html):
         'Inventory': inventory,
         'FF&E': ffe,
         'Business Description': business_description,
+        'URL': url,  # Add the URL to the dictionary
         **detailed_info,
     }
 
 
 async def HTTPClientDownloader(url, settings, state):
     # Before scraping, check if we've already scraped this URL
-    with open('scraped_urls.txt', 'r') as f:
+    with open('scraped_urls.txt', 'a+') as f:
+        f.seek(0)
         scraped_urls = f.read().splitlines()
     if url in scraped_urls:
         return
@@ -125,7 +127,7 @@ async def HTTPClientDownloader(url, settings, state):
                     
                     async with session.get(listing_url, proxy=proxy, headers=headers) as listing_response:
                         listing_html = await listing_response.text()
-                        data = parse_html(listing_html)  # Parse the HTML and extract the data
+                        data = parse_html(listing_html, listing_url)  # Parse the HTML and include the URL
 
                         end_time = time.perf_counter()  # Stop timer
                         elapsed_time = end_time - start_time  # Calculate time taken to get response
@@ -154,6 +156,7 @@ async def HTTPClientDownloader(url, settings, state):
         # After scraping, add the URL to the list of scraped URLs
         with open('scraped_urls.txt', 'a') as f:
             f.write(url + '\n')
+
 
 
 async def dispatch(url, settings, state):
