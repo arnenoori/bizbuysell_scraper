@@ -10,6 +10,11 @@ import logging
 import time
 import random
 import aiofiles
+import schedule
+import time
+import nest_asyncio
+nest_asyncio.apply()
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -33,7 +38,7 @@ def parse_listing_urls(html, url):
         return []
     
     
-def parse_html(html):
+def parse_html(html, url):
     soup = BeautifulSoup(html, 'html.parser')
 
     title_element = soup.find('h1', class_='bfsTitle')
@@ -69,9 +74,11 @@ def parse_html(html):
     detailed_info_elements = soup.find_all('dt')
     detailed_info = {}
     for element in detailed_info_elements:
-        key = element.find('strong').text.strip().rstrip(":")  # Remove trailing ':' from the key
-        value = element.find_next_sibling('dd').text.strip()
-        detailed_info[key] = value
+        strong_element = element.find('strong')
+        if strong_element is not None:
+            key = strong_element.text.strip().rstrip(":")
+            value = element.find_next_sibling('dd').text.strip()
+            detailed_info[key] = value
 
 
     return {
@@ -90,7 +97,7 @@ def parse_html(html):
     }
 
 
-async def HTTPClientDownloader(url, settings, state):
+async def HTTPClientDownloader(url, settings):
     # Before scraping, check if we've already scraped this URL
     with open('scraped_urls.txt', 'a+') as f:
         f.seek(0)
@@ -119,15 +126,22 @@ async def HTTPClientDownloader(url, settings, state):
             html = None
             async with session.get(url, proxy=proxy, headers=headers) as response:
                 html = await response.text()
-                listing_urls = parse_listing_urls(html)  # Get individual listing URLs
+                listing_urls = parse_listing_urls(html, url)  # Get individual listing URLs
                 
                 for listing_url in listing_urls:
+                    # Check if we've already scraped this URL
+                    with open('scraped_urls.txt', 'r') as f:
+                        scraped_urls = f.read().splitlines()
+                    if listing_url in scraped_urls:
+                        break
+
                     # Adding randomness to the rate limit
                     await asyncio.sleep(random.uniform(1, 5))
-                    
+                                    
                     async with session.get(listing_url, proxy=proxy, headers=headers) as listing_response:
                         listing_html = await listing_response.text()
                         data = parse_html(listing_html, listing_url)  # Parse the HTML and include the URL
+                        print(data)  # Print scraped data
 
                         end_time = time.perf_counter()  # Stop timer
                         elapsed_time = end_time - start_time  # Calculate time taken to get response
@@ -140,7 +154,7 @@ async def HTTPClientDownloader(url, settings, state):
                             }
                         )
 
-                        file_path = f"./data/bizbuysell-{state}.csv"
+                        file_path = f"./data/bizbuysell.csv"
 
                         # If the file does not exist, create it and write the headers
                         if not os.path.isfile(file_path):
@@ -153,26 +167,24 @@ async def HTTPClientDownloader(url, settings, state):
                             writer = csv.DictWriter(f, fieldnames=data.keys())
                             writer.writerow(data)
 
-        # After scraping, add the URL to the list of scraped URLs
-        with open('scraped_urls.txt', 'a') as f:
-            f.write(url + '\n')
+                    # After scraping, add the URL to the list of scraped URLs
+                    with open('scraped_urls.txt', 'a') as f:
+                        f.write(listing_url + '\n')  # Write listing_url, not u
 
 
+async def dispatch(url, settings):
+    await HTTPClientDownloader(url, settings)
 
-async def dispatch(url, settings, state):
-    await HTTPClientDownloader(url, settings, state)
 
-async def main(start_urls, settings, state):
+async def job(start_urls, settings):
     tasks = []
     for url in start_urls:
-        task = asyncio.create_task(dispatch(url, settings, state))
+        task = asyncio.create_task(dispatch(url, settings))
         tasks.append(task)
-
     results = await asyncio.gather(*tasks)
     print(f"total requests", len(results))
 
-
-if __name__ == '__main__':
+async def main():
     settings = {
         "max_tcp_connections": 1,
         "proxies": [
@@ -185,20 +197,16 @@ if __name__ == '__main__':
         }
     }
 
-    states = ['texas', 'florida', 'georgia', 'mississippi', 'louisiana', 'north-carolina', 'south-carolina', 'illinois', 'maryland', 'arizona', 'colorado', 'alabama', 'new-mexico', 'arkansas', 'nevada', 'wisconsin', 'michigan', 'pennsylvania', 'new-york', 'new-jersey']
-    
-    # Other states:
-    # 'alaska', 'california', 'connecticut', 'delaware', 'hawaii', 'idaho', 'indiana', 'iowa', 'kansas', 'kentucky', 'maine', 'massachusetts', 'minnesota', 'missouri', 'montana', 'nebraska', 'new-hampshire', 'north-dakota', 'ohio', 'oklahoma', 'oregon', 'rhode-island', 'south-dakota', 'tennessee', 'utah', 'vermont', 'virginia', 'washington', 'west-virginia', 'wyoming'
-
+    start_urls = [f"https://www.bizbuysell.com/businesses-for-sale/{i}" for i in range(1, 201)] # only 200 pages are displayed at a time
     tasks = []
-    for state in states:
-        start_urls = []
-        start, end = 1, 13  # For demo purpose
-        for i in range(start, end):
-            url = f"https://www.bizbuysell.com/{state}-established-businesses-for-sale/{i}"
-            start_urls.append(url)
-        
-        task = asyncio.create_task(main(start_urls, settings, state))
-        tasks.append(task)
+    task = asyncio.create_task(job(start_urls, settings))  # create tasks for each job, not main
+    tasks.append(task)
 
-    asyncio.gather(*tasks)
+    await asyncio.gather(*tasks)  # Gather and run all tasks
+    await asyncio.sleep(86400)  # Sleep for one day
+
+if __name__ == '__main__':
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+    loop.close()
