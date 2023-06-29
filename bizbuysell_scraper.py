@@ -71,6 +71,38 @@ def parse_html(html, url):
     business_description_element = soup.find('div', class_='businessDescription')
     business_description = business_description_element.text.strip() if business_description_element else 'N/A'
 
+    broker_element = soup.find('h3')
+    if broker_element:
+        broker_link = broker_element.find('a')
+        if broker_link:
+            broker_name = broker_link.text
+        else:
+            print(f"No <a> tag found in broker_element: {broker_element}")
+            broker_name = 'N/A'
+    else:
+        print("No <h3> tag found.")
+        broker_name = 'N/A'
+
+    phone_number_element = soup.find('label', class_='ctc_phone')
+    if phone_number_element:
+        phone_link = phone_number_element.find('a')
+        if phone_link:
+            phone_number = phone_link.text
+        else:
+            print(f"No <a> tag found in phone_number_element: {phone_number_element}")
+            phone_number = 'N/A'
+    else:
+        print("No <label> tag with class 'ctc_phone' found.")
+        phone_number = 'N/A'
+
+    employees_element = soup.find('span', string='Employees:')
+    employees = employees_element.find_next_sibling('b').text.strip() if employees_element else 'N/A'
+
+    # Ensure the 'Employees' column only contains numeric data.
+    if not employees.isdigit():
+        employees = 'N/A'
+
+
     detailed_info_elements = soup.find_all('dt')
     detailed_info = {}
     for element in detailed_info_elements:
@@ -93,6 +125,9 @@ def parse_html(html, url):
         'FF&E': ffe,
         'Business Description': business_description,
         'URL': url,  # Add the URL to the dictionary
+        'Employees': employees,  # Add the cleaned Employees column
+        'Broker Name': broker_name,  # Add the broker name
+        'Phone Number': phone_number,  # Add the phone number
         **detailed_info,
     }
 
