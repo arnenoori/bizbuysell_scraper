@@ -71,17 +71,14 @@ def parse_html(html, url):
     business_description_element = soup.find('div', class_='businessDescription')
     business_description = business_description_element.text.strip() if business_description_element else 'N/A'
 
-    broker_element = soup.find('h3')
-    if broker_element:
-        broker_link = broker_element.find('a')
-        if broker_link:
-            broker_name = broker_link.text
-        else:
-            print(f"No <a> tag found in broker_element: {broker_element}")
-            broker_name = 'N/A'
-    else:
-        print("No <h3> tag found.")
-        broker_name = 'N/A'
+    broker_element = None
+    broker_name = 'N/A'
+    for h3 in soup.find_all('h3'):
+        if 'Business Listed By:' in h3.text:
+            broker_link = h3.find('a')
+            if broker_link:
+                broker_name = broker_link.text
+                break
 
     phone_number_element = soup.find('label', class_='ctc_phone')
     if phone_number_element:
@@ -143,15 +140,26 @@ async def HTTPClientDownloader(url, settings):
     host = urlparse(url).hostname
     max_tcp_connections = settings['max_tcp_connections']
 
+    proxies = [
+        # PLACEHOLDE (ADD YOUR OWN PROXIES):
+        # 'http://127.0.0.1:8080'
+    ]
+    proxy_index = 0
+
     async with settings['rate_per_host'][host]["limit"]:
         connector = aiohttp.TCPConnector(limit=max_tcp_connections)
 
         async with aiohttp.ClientSession(connector=connector) as session:
             start_time = time.perf_counter()  # Start timer
-            safari_agents = [
+
+            user_agents = [
                 'Safari/17612.3.14.1.6 CFNetwork/1327.0.4 Darwin/21.2.0',  # works!
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:86.0) Gecko/20100101 Firefox/86.0',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15',
             ]
-            user_agent = random.choice(safari_agents)
+            user_agent = random.choice(user_agents)
 
             headers = {
                 'User-Agent': user_agent
@@ -163,6 +171,10 @@ async def HTTPClientDownloader(url, settings):
                 html = await response.text()
                 listing_urls = parse_listing_urls(html, url)  # Get individual listing URLs
                 
+                    # Check the number of listings extracted
+                if len(listing_urls) != 56:
+                    print(f"Warning: Expected 56 listings, but got {len(listing_urls)} for URL: {url}")
+
                 for listing_url in listing_urls:
                     # Check if we've already scraped this URL
                     with open('scraped_urls.txt', 'r') as f:
@@ -170,9 +182,18 @@ async def HTTPClientDownloader(url, settings):
                     if listing_url in scraped_urls:
                         break
 
+                    proxy_index = (proxy_index + 1) % len(proxies)
+                    proxy = proxies[proxy_index]
+
                     # Adding randomness to the rate limit
                     await asyncio.sleep(random.uniform(1, 5))
-                                    
+
+                    user_agent = random.choice(user_agents)
+                    
+                    headers = {
+                        'User-Agent': user_agent
+                    }
+            
                     async with session.get(listing_url, proxy=proxy, headers=headers) as listing_response:
                         listing_html = await listing_response.text()
                         data = parse_html(listing_html, listing_url)  # Parse the HTML and include the URL
